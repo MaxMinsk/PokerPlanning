@@ -13,12 +13,12 @@ public class PokerHub : Hub
         _roomService = roomService;
     }
 
-    public async Task CreateRoom(string? ownerName, int scaleType, string cardsText)
+    public async Task CreateRoom(string? ownerName, int scaleType, string cardsText, int? sessionMinutes = null)
     {
         try
         {
             var scale = (ScaleType)scaleType;
-            var room = _roomService.CreateRoom(ownerName, scale, cardsText, Context.ConnectionId);
+            var room = _roomService.CreateRoom(ownerName, scale, cardsText, Context.ConnectionId, sessionMinutes);
 
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
             await Clients.Caller.SendAsync("RoomCreated", new
@@ -31,6 +31,7 @@ public class PokerHub : Hub
                 totalCards = room.Cards.Count,
                 isOwner = true,
                 isSpectator = room.Players[Context.ConnectionId].IsSpectator,
+                secondsPerCard = room.SecondsPerCard,
                 players = room.Players.Values.Select(p => new
                 {
                     name = p.Name,
@@ -87,6 +88,8 @@ public class PokerHub : Hub
                 state = room.State.ToString(),
                 isOwner = false,
                 isSpectator = false,
+                secondsPerCard = room.SecondsPerCard,
+                cardTimerStartedAt = room.CardTimerStartedAt?.ToString("o"),
                 players = room.Players.Values.Select(p => new
                 {
                     name = p.Name,
@@ -193,7 +196,8 @@ public class PokerHub : Hub
             {
                 cardIndex = room.CurrentCardIndex,
                 card = new { room.CurrentCard!.Subject, room.CurrentCard.Description },
-                totalCards = room.Cards.Count
+                totalCards = room.Cards.Count,
+                secondsPerCard = room.SecondsPerCard
             });
         }
         catch (Exception ex)
@@ -224,7 +228,8 @@ public class PokerHub : Hub
                 {
                     cardIndex = room.CurrentCardIndex,
                     card = new { nextCard.Subject, nextCard.Description },
-                    totalCards = room.Cards.Count
+                    totalCards = room.Cards.Count,
+                    secondsPerCard = room.SecondsPerCard
                 });
             }
         }

@@ -212,6 +212,32 @@ textarea { resize: vertical; font-family: 'Courier New', monospace; }
 
 .question-counter { color: var(--text-muted); font-size: 0.9rem; }
 
+.card-timer {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 0.2rem 0.6rem;
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    transition: color 0.3s, background 0.3s, border-color 0.3s;
+}
+.card-timer.warning {
+    color: var(--warning);
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+.card-timer.danger {
+    color: var(--danger);
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 /* ===== Table Area ===== */
 .table-area {
     flex: 1;

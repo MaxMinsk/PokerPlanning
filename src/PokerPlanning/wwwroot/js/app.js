@@ -1,5 +1,6 @@
 // ===== State =====
 let connection = null;
+let timerInterval = null;
 let state = {
     roomCode: null,
     isOwner: false,
@@ -11,7 +12,9 @@ let state = {
     selectedVote: null,
     roomState: 'Voting',  // Voting | Revealed | Finished
     votes: {},
-    results: null
+    results: null,
+    secondsPerCard: null,
+    timerDeadline: null     // Date object: when current card timer expires
 };
 
 // ===== SignalR Connection =====
@@ -63,11 +66,13 @@ document.getElementById('btnContinue').addEventListener('click', async () => {
     const ownerName = document.getElementById('ownerName').value.trim();
     const scaleType = parseInt(document.getElementById('scaleSelect').value);
     const cardsText = document.getElementById('cardsText').value.trim();
+    const sessionVal = document.getElementById('sessionTime').value;
+    const sessionMinutes = sessionVal ? parseInt(sessionVal) : null;
 
     if (!cardsText) return showToast("Enter at least one question", true);
 
     await ensureConnected();
-    connection.invoke("CreateRoom", ownerName || null, scaleType, cardsText);
+    connection.invoke("CreateRoom", ownerName || null, scaleType, cardsText, sessionMinutes);
 });
 
 document.getElementById('btnJoinRoom').addEventListener('click', async () => {
@@ -116,8 +121,10 @@ function onRoomCreated(data) {
     state.roomState = 'Voting';
     state.selectedVote = null;
     state.votes = {};
+    state.secondsPerCard = data.secondsPerCard || null;
 
     renderRoom(data.currentCard);
+    startCardTimer();
     showScreen('room');
     updateUrl(`/room/${data.roomCode}`);
 }
@@ -133,8 +140,16 @@ function onRoomState(data) {
     state.roomState = data.state;
     state.selectedVote = null;
     state.votes = data.votes || {};
+    state.secondsPerCard = data.secondsPerCard || null;
+
+    // Restore timer from server timestamp
+    if (data.secondsPerCard && data.cardTimerStartedAt) {
+        const started = new Date(data.cardTimerStartedAt);
+        state.timerDeadline = new Date(started.getTime() + data.secondsPerCard * 1000);
+    }
 
     renderRoom(data.currentCard);
+    if (data.state === 'Voting') startCardTimer();
     showScreen('room');
     updateUrl(`/room/${data.roomCode}`);
 
@@ -174,6 +189,7 @@ function onVoteReceived(data) {
 function onCardsRevealed(data) {
     state.roomState = 'Revealed';
     state.votes = data.votes;
+    stopCardTimer();
     renderRevealed(data.votes, data.consensus, data.average);
 }
 
@@ -194,14 +210,17 @@ function onNewRound(data) {
     state.roomState = 'Voting';
     state.selectedVote = null;
     state.votes = {};
+    state.secondsPerCard = data.secondsPerCard || state.secondsPerCard;
     state.players = state.players.map(p => ({ ...p, hasVoted: false }));
 
     renderRoom(data.card);
+    startCardTimer();
 }
 
 function onGameFinished(data) {
     state.roomState = 'Finished';
     state.results = data.results;
+    stopCardTimer();
     renderResults(data.results);
     showScreen('results');
 }
@@ -463,6 +482,57 @@ function updateUrl(path) {
 async function ensureConnected() {
     if (!connection || connection.state === 'Disconnected') {
         await initConnection();
+    }
+}
+
+// ===== Card Timer =====
+function startCardTimer() {
+    stopCardTimer();
+    if (!state.secondsPerCard) return;
+
+    // Set deadline from now (new round) or from existing deadline (rejoin)
+    if (!state.timerDeadline || state.timerDeadline < new Date()) {
+        state.timerDeadline = new Date(Date.now() + state.secondsPerCard * 1000);
+    }
+
+    const timerEl = document.getElementById('cardTimer');
+    const valueEl = document.getElementById('cardTimerValue');
+    timerEl.style.display = '';
+
+    timerInterval = setInterval(() => {
+        const remaining = Math.max(0, Math.floor((state.timerDeadline - Date.now()) / 1000));
+        const mins = Math.floor(remaining / 60);
+        const secs = remaining % 60;
+        valueEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+        // Color states
+        const ratio = remaining / state.secondsPerCard;
+        timerEl.classList.remove('warning', 'danger');
+        if (remaining === 0) {
+            timerEl.classList.add('danger');
+            valueEl.textContent = "Time's up!";
+            // Stop interval but keep the element visible
+            clearInterval(timerInterval);
+            timerInterval = null;
+        } else if (ratio <= 0.15) {
+            timerEl.classList.add('danger');
+        } else if (ratio <= 0.35) {
+            timerEl.classList.add('warning');
+        }
+    }, 250);
+}
+
+function stopCardTimer() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    state.timerDeadline = null;
+    // Hide the timer element (called on reveal, new round, game finished)
+    const timerEl = document.getElementById('cardTimer');
+    if (timerEl) {
+        timerEl.style.display = 'none';
+        timerEl.classList.remove('warning', 'danger');
     }
 }
 

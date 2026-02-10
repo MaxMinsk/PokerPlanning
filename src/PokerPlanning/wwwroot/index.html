@@ -56,6 +56,19 @@
                 <textarea id="cardsText" rows="8" placeholder="AUTH-101;Google OAuth login&#10;AUTH-102;Two-factor authentication&#10;DASH-201;Dashboard redesign"></textarea>
             </div>
 
+            <div class="form-group">
+                <label for="sessionTime">Session time limit <span class="hint">(optional — auto-calculates time per card)</span></label>
+                <select id="sessionTime">
+                    <option value="">No limit</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="90">1.5 hours</option>
+                    <option value="120">2 hours</option>
+                </select>
+            </div>
+
             <button id="btnContinue" class="btn btn-primary btn-large">Continue &rarr;</button>
         </div>
     </div>
@@ -84,6 +97,9 @@
                 <div class="room-info">
                     <span class="room-badge" id="roomCodeBadge"></span>
                     <span class="question-counter" id="questionCounter"></span>
+                    <span class="card-timer" id="cardTimer" style="display:none">
+                        &#9202; <span id="cardTimerValue"></span>
+                    </span>
                 </div>
                 <button class="btn btn-small btn-outline" id="btnCopyLink" title="Copy invite link">
                     &#128203; Copy Link

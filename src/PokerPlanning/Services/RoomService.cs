@@ -8,7 +8,7 @@ public class RoomService
     private readonly ConcurrentDictionary<string, Room> _rooms = new();
     private static readonly Random _random = new();
 
-    public Room CreateRoom(string? ownerName, ScaleType scale, string cardsText, string ownerConnectionId)
+    public Room CreateRoom(string? ownerName, ScaleType scale, string cardsText, string ownerConnectionId, int? sessionMinutes = null)
     {
         var code = GenerateCode();
         var cards = ParseCards(cardsText);
@@ -25,6 +25,14 @@ public class RoomService
             CurrentCardIndex = 0,
             State = RoomState.Voting
         };
+
+        // Session timer
+        if (sessionMinutes.HasValue && sessionMinutes.Value > 0)
+        {
+            room.SessionMinutes = sessionMinutes.Value;
+            room.SecondsPerCard = (sessionMinutes.Value * 60) / cards.Count;
+            room.CardTimerStartedAt = DateTime.UtcNow;
+        }
 
         var isSpectator = string.IsNullOrWhiteSpace(ownerName);
         var player = new Player
@@ -150,6 +158,8 @@ public class RoomService
         card.Votes.Clear();
         card.AcceptedEstimate = null;
         room.State = RoomState.Voting;
+        if (room.SecondsPerCard.HasValue)
+            room.CardTimerStartedAt = DateTime.UtcNow;
     }
 
     public Card? NextQuestion(string code, string connectionId)
@@ -173,6 +183,10 @@ public class RoomService
             room.State = RoomState.Finished;
             return null;
         }
+
+        // Reset timer for next card
+        if (room.SecondsPerCard.HasValue)
+            room.CardTimerStartedAt = DateTime.UtcNow;
 
         room.State = RoomState.Voting;
         return room.CurrentCard;
