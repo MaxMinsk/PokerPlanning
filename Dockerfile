@@ -17,9 +17,11 @@ LABEL \
     io.hass.type="addon" \
     io.hass.version="1.0.0"
 
+RUN apk add --no-cache icu-libs
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
 ENV ASPNETCORE_URLS="http://0.0.0.0:5000" \
-    ASPNETCORE_ENVIRONMENT="Production" \
-    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+    ASPNETCORE_ENVIRONMENT="Production"
 
 WORKDIR /app
 COPY --from=build /app/publish .
