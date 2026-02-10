@@ -12,7 +12,14 @@ builder.Services.AddSingleton<RoomService>();
 var app = builder.Build();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // Prevent aggressive caching of JS/CSS
+        ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+    }
+});
 
 app.MapHub<PokerHub>("/pokerhub");
 
