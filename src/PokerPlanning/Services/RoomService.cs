@@ -197,11 +197,39 @@ public class RoomService
         var voteList = votes.Where(v => v != "?").ToList();
         if (voteList.Count == 0) return null;
 
-        return voteList
+        // Find the most frequent value
+        var groups = voteList
             .GroupBy(v => v)
             .OrderByDescending(g => g.Count())
-            .First()
-            .Key;
+            .ToList();
+
+        var topGroup = groups.First();
+
+        // Consensus only if the top value has strict majority (>50%)
+        // or all votes are the same
+        if (topGroup.Count() > voteList.Count / 2.0)
+            return topGroup.Key;
+
+        // No clear consensus — return median for numeric scales, null otherwise
+        return CalculateMedian(voteList);
+    }
+
+    public string? CalculateMedian(List<string> votes)
+    {
+        var numeric = votes
+            .Where(v => double.TryParse(v, out _))
+            .Select(v => double.Parse(v))
+            .OrderBy(v => v)
+            .ToList();
+
+        if (numeric.Count == 0) return null;
+
+        var mid = numeric.Count / 2;
+        var median = numeric.Count % 2 == 0
+            ? (numeric[mid - 1] + numeric[mid]) / 2.0
+            : numeric[mid];
+
+        return median % 1 == 0 ? ((int)median).ToString() : median.ToString("0.#");
     }
 
     public double? CalculateAverage(IEnumerable<string> votes)
