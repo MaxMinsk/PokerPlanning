@@ -8,3 +8,6 @@ publish/
 *.swp
 *~
 .DS_Store
+
+# Private notes (not published)
+.notes/
