@@ -35,6 +35,7 @@ function initConnection() {
     connection.on("NewRound", onNewRound);
     connection.on("GameFinished", onGameFinished);
     connection.on("Results", onResults);
+    connection.on("PlayerThinking", onPlayerThinking);
     connection.on("Error", onError);
 
     connection.onreconnecting(() => showToast("Reconnecting..."));
@@ -236,6 +237,38 @@ function onError(msg) {
     showToast(msg, true);
 }
 
+// ===== Player Thinking (wobble) =====
+function onPlayerThinking(data) {
+    const seat = document.querySelector(`.player-seat[data-player="${CSS.escape(data.playerName)}"]`);
+    if (!seat) return;
+    const card = seat.querySelector('.player-card');
+    if (!card) return;
+
+    // Remove and re-add class to restart animation
+    card.classList.remove('thinking');
+    // Force reflow to restart animation
+    void card.offsetWidth;
+    card.classList.add('thinking');
+
+    // Remove after animation ends
+    card.addEventListener('animationend', () => {
+        card.classList.remove('thinking');
+    }, { once: true });
+}
+
+let thinkingThrottleTimer = null;
+function sendThinking() {
+    if (thinkingThrottleTimer || !state.roomCode || state.roomState !== 'Voting') return;
+    thinkingThrottleTimer = setTimeout(() => { thinkingThrottleTimer = null; }, 2000);
+    if (connection && connection.state === signalR.HubConnectionState.Connected) {
+        connection.invoke("PlayerThinking", state.roomCode).catch(() => {});
+    }
+}
+
+// Attach hover/mousemove listeners to voting area
+document.getElementById('votingCards').addEventListener('mouseover', sendThinking);
+document.getElementById('votingCards').addEventListener('touchstart', sendThinking, { passive: true });
+
 // ===== Rendering =====
 const CARD_COLORS = 8;
 
@@ -286,7 +319,7 @@ function renderPlayerSeat(p) {
     const badge = p.isSpectator ? ' <span class="spectator-badge">spectator</span>' : '';
 
     return `
-        <div class="player-seat">
+        <div class="player-seat" data-player="${escapeHtml(p.name)}">
             <div class="${cardClass}">${cardContent}</div>
             <div class="${nameClass}">${escapeHtml(p.name)}${badge}</div>
         </div>

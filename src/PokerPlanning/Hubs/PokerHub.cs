@@ -239,6 +239,20 @@ public class PokerHub : Hub
         }
     }
 
+    public async Task PlayerThinking(string roomCode)
+    {
+        var room = _roomService.GetRoom(roomCode);
+        if (room == null) return;
+
+        var player = room.Players.GetValueOrDefault(Context.ConnectionId);
+        if (player == null || player.IsSpectator) return;
+
+        await Clients.OthersInGroup(room.Code).SendAsync("PlayerThinking", new
+        {
+            playerName = player.Name
+        });
+    }
+
     public async Task GetResults(string roomCode)
     {
         try
