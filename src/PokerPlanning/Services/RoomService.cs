@@ -8,7 +8,7 @@ public class RoomService
     private readonly ConcurrentDictionary<string, Room> _rooms = new();
     private static readonly Random _random = new();
 
-    public Room CreateRoom(string? ownerName, ScaleType scale, string cardsText, string ownerConnectionId, int? sessionMinutes = null)
+    public Room CreateRoom(string? ownerName, ScaleType scale, string cardsText, string ownerConnectionId, int? sessionMinutes = null, bool coffeeBreak = false)
     {
         var code = GenerateCode();
         var cards = ParseCards(cardsText);
@@ -23,7 +23,8 @@ public class RoomService
             Scale = scale,
             Cards = cards,
             CurrentCardIndex = 0,
-            State = RoomState.Voting
+            State = RoomState.Voting,
+            CoffeeBreakEnabled = coffeeBreak
         };
 
         // Session timer
@@ -114,7 +115,7 @@ public class RoomService
             throw new InvalidOperationException("Spectators cannot vote.");
 
         var scale = ScaleDefinitions.GetScale(room.Scale);
-        if (!scale.Contains(value))
+        if (!scale.Contains(value) && !(room.CoffeeBreakEnabled && value == CoffeeVote))
             throw new ArgumentException($"Invalid vote value: {value}");
 
         card.Votes[connectionId] = value;
@@ -206,9 +207,11 @@ public class RoomService
         return result;
     }
 
+    public const string CoffeeVote = "☕";
+
     public string? CalculateConsensus(IEnumerable<string> votes)
     {
-        var voteList = votes.Where(v => v != "?").ToList();
+        var voteList = votes.Where(v => v != "?" && v != CoffeeVote).ToList();
         if (voteList.Count == 0) return null;
 
         var topGroup = voteList
@@ -224,10 +227,15 @@ public class RoomService
         return null;
     }
 
+    public int CountCoffeeVotes(IEnumerable<string> votes)
+    {
+        return votes.Count(v => v == CoffeeVote);
+    }
+
     public double? CalculateAverage(IEnumerable<string> votes)
     {
         var numericVotes = votes
-            .Where(v => double.TryParse(v, out _))
+            .Where(v => v != CoffeeVote && double.TryParse(v, out _))
             .Select(v => double.Parse(v))
             .ToList();
 

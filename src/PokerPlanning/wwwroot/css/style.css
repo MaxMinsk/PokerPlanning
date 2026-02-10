@@ -441,6 +441,57 @@ textarea { resize: vertical; font-family: 'Courier New', monospace; }
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
 }
 
+/* ===== Coffee Break ===== */
+.vote-btn-coffee {
+    border-color: #92400e;
+    background: rgba(146, 64, 14, 0.1);
+    font-size: 1.5rem;
+}
+.vote-btn-coffee:hover {
+    border-color: #b45309;
+    background: rgba(180, 83, 9, 0.2);
+}
+.vote-btn-coffee.selected {
+    border-color: #b45309;
+    background: #92400e;
+}
+
+.coffee-banner {
+    background: linear-gradient(135deg, rgba(146, 64, 14, 0.15), rgba(180, 83, 9, 0.1));
+    border: 1px solid #92400e;
+    border-radius: var(--radius);
+    padding: 0.75rem 1.25rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #fbbf24;
+    text-align: center;
+    animation: fadeInSlide 0.4s ease;
+}
+
+@keyframes fadeInSlide {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Checkbox ===== */
+.checkbox-group {
+    margin-top: 0.25rem;
+}
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: var(--text);
+}
+.checkbox-label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
 /* ===== Owner Controls ===== */
 .owner-controls {
     display: flex;

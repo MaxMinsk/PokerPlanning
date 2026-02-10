@@ -14,7 +14,8 @@ let state = {
     votes: {},
     results: null,
     secondsPerCard: null,
-    timerDeadline: null     // Date object: when current card timer expires
+    timerDeadline: null,    // Date object: when current card timer expires
+    coffeeBreakEnabled: false
 };
 
 // ===== SignalR Connection =====
@@ -69,11 +70,12 @@ document.getElementById('btnContinue').addEventListener('click', async () => {
     const cardsText = document.getElementById('cardsText').value.trim();
     const sessionVal = document.getElementById('sessionTime').value;
     const sessionMinutes = sessionVal ? parseInt(sessionVal) : null;
+    const coffeeBreak = document.getElementById('coffeeBreak').checked;
 
     if (!cardsText) return showToast("Enter at least one question", true);
 
     await ensureConnected();
-    connection.invoke("CreateRoom", ownerName || null, scaleType, cardsText, sessionMinutes);
+    connection.invoke("CreateRoom", ownerName || null, scaleType, cardsText, sessionMinutes, coffeeBreak);
 });
 
 document.getElementById('btnJoinRoom').addEventListener('click', async () => {
@@ -123,6 +125,7 @@ function onRoomCreated(data) {
     state.selectedVote = null;
     state.votes = {};
     state.secondsPerCard = data.secondsPerCard || null;
+    state.coffeeBreakEnabled = data.coffeeBreakEnabled || false;
 
     renderRoom(data.currentCard);
     startCardTimer();
@@ -142,6 +145,7 @@ function onRoomState(data) {
     state.selectedVote = null;
     state.votes = data.votes || {};
     state.secondsPerCard = data.secondsPerCard || null;
+    state.coffeeBreakEnabled = data.coffeeBreakEnabled || false;
 
     // Restore timer from server timestamp
     if (data.secondsPerCard && data.cardTimerStartedAt) {
@@ -155,7 +159,7 @@ function onRoomState(data) {
     updateUrl(`/room/${data.roomCode}`);
 
     if (data.state === 'Revealed' && data.votes) {
-        renderRevealed(data.votes, data.consensus, data.average);
+        renderRevealed(data.votes, data.consensus, data.average, data.coffeeVotes);
     }
 }
 
@@ -191,7 +195,7 @@ function onCardsRevealed(data) {
     state.roomState = 'Revealed';
     state.votes = data.votes;
     stopCardTimer();
-    renderRevealed(data.votes, data.consensus, data.average);
+    renderRevealed(data.votes, data.consensus, data.average, data.coffeeVotes);
 }
 
 function onVoteUpdated(data) {
@@ -200,6 +204,7 @@ function onVoteUpdated(data) {
     document.getElementById('consensusValue').textContent = data.consensus || '-';
     document.getElementById('averageValue').textContent = data.average != null ? data.average : '-';
     preselectAcceptValue(data.consensus, data.average);
+    renderCoffeeBanner(data.coffeeVotes || 0);
 }
 
 function onEstimateAccepted(data) {
@@ -217,6 +222,7 @@ function onNewRound(data) {
 
     renderRoom(data.card);
     startCardTimer();
+    document.getElementById('coffeeBanner').style.display = 'none';
 }
 
 function onGameFinished(data) {
@@ -290,6 +296,7 @@ function renderRoom(card) {
     tableCenter.classList.add(`card-color-${state.currentCardIndex % CARD_COLORS}`);
 
     document.getElementById('statsDisplay').style.display = 'none';
+    document.getElementById('coffeeBanner').style.display = 'none';
 
     renderPlayers();
     renderVotingCards();
@@ -375,10 +382,17 @@ function renderVotingCards() {
     }
 
     area.style.display = '';
-    container.innerHTML = state.scale.map(val => {
+    let html = state.scale.map(val => {
         const selected = state.selectedVote === val ? 'selected' : '';
         return `<button class="vote-btn ${selected}" onclick="castVote('${escapeHtml(val)}')">${escapeHtml(val)}</button>`;
     }).join('');
+
+    if (state.coffeeBreakEnabled) {
+        const coffeeSelected = state.selectedVote === '☕' ? 'selected' : '';
+        html += `<button class="vote-btn vote-btn-coffee ${coffeeSelected}" onclick="castVote('☕')">☕</button>`;
+    }
+
+    container.innerHTML = html;
 }
 
 function renderOwnerControls() {
@@ -400,13 +414,13 @@ function renderOwnerControls() {
     if (isRevealed) {
         const select = document.getElementById('acceptSelect');
         select.innerHTML = state.scale
-            .filter(v => v !== '?')
+            .filter(v => v !== '?' && v !== '☕')
             .map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)
             .join('');
     }
 }
 
-function renderRevealed(votes, consensus, average) {
+function renderRevealed(votes, consensus, average, coffeeVotes) {
     state.votes = votes;
     renderPlayers();
     renderOwnerControls();
@@ -416,6 +430,21 @@ function renderRevealed(votes, consensus, average) {
     document.getElementById('averageValue').textContent = average != null ? average : '-';
 
     preselectAcceptValue(consensus, average);
+    renderCoffeeBanner(coffeeVotes || 0);
+}
+
+function renderCoffeeBanner(coffeeCount) {
+    const banner = document.getElementById('coffeeBanner');
+    if (!banner) return;
+    if (coffeeCount > 0) {
+        banner.style.display = '';
+        const text = coffeeCount === 1
+            ? '1 player needs a break!'
+            : `${coffeeCount} players need a break!`;
+        document.getElementById('coffeeBannerText').textContent = text;
+    } else {
+        banner.style.display = 'none';
+    }
 }
 
 function preselectAcceptValue(consensus, average) {

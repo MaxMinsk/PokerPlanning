@@ -13,12 +13,12 @@ public class PokerHub : Hub
         _roomService = roomService;
     }
 
-    public async Task CreateRoom(string? ownerName, int scaleType, string cardsText, int? sessionMinutes = null)
+    public async Task CreateRoom(string? ownerName, int scaleType, string cardsText, int? sessionMinutes = null, bool coffeeBreak = false)
     {
         try
         {
             var scale = (ScaleType)scaleType;
-            var room = _roomService.CreateRoom(ownerName, scale, cardsText, Context.ConnectionId, sessionMinutes);
+            var room = _roomService.CreateRoom(ownerName, scale, cardsText, Context.ConnectionId, sessionMinutes, coffeeBreak);
 
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
             await Clients.Caller.SendAsync("RoomCreated", new
@@ -32,6 +32,7 @@ public class PokerHub : Hub
                 isOwner = true,
                 isSpectator = room.Players[Context.ConnectionId].IsSpectator,
                 secondsPerCard = room.SecondsPerCard,
+                coffeeBreakEnabled = room.CoffeeBreakEnabled,
                 players = room.Players.Values.Select(p => new
                 {
                     name = p.Name,
@@ -90,6 +91,7 @@ public class PokerHub : Hub
                 isSpectator = false,
                 secondsPerCard = room.SecondsPerCard,
                 cardTimerStartedAt = room.CardTimerStartedAt?.ToString("o"),
+                coffeeBreakEnabled = room.CoffeeBreakEnabled,
                 players = room.Players.Values.Select(p => new
                 {
                     name = p.Name,
@@ -103,7 +105,10 @@ public class PokerHub : Hub
                     : null,
                 average = room.State == RoomState.Revealed
                     ? _roomService.CalculateAverage(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
-                    : null
+                    : null,
+                coffeeVotes = room.State == RoomState.Revealed
+                    ? _roomService.CountCoffeeVotes(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
+                    : 0
             });
         }
         catch (Exception ex)
@@ -132,12 +137,14 @@ public class PokerHub : Hub
             else if (room.State == RoomState.Revealed)
             {
                 // After reveal, votes are visible — send the updated vote
+                var updatedVotes = room.CurrentCard?.Votes.Values ?? Enumerable.Empty<string>();
                 await Clients.Group(room.Code).SendAsync("VoteUpdated", new
                 {
                     playerName = player.Name,
                     value,
-                    consensus = _roomService.CalculateConsensus(room.CurrentCard?.Votes.Values ?? Enumerable.Empty<string>()),
-                    average = _roomService.CalculateAverage(room.CurrentCard?.Votes.Values ?? Enumerable.Empty<string>())
+                    consensus = _roomService.CalculateConsensus(updatedVotes),
+                    average = _roomService.CalculateAverage(updatedVotes),
+                    coffeeVotes = _roomService.CountCoffeeVotes(updatedVotes)
                 });
             }
         }
@@ -155,11 +162,13 @@ public class PokerHub : Hub
             var room = _roomService.GetRoom(roomCode)!;
             var card = room.CurrentCard;
 
+            var cardVotes = card?.Votes.Values ?? Enumerable.Empty<string>();
             await Clients.Group(room.Code).SendAsync("CardsRevealed", new
             {
                 votes = namedVotes,
-                consensus = _roomService.CalculateConsensus(card?.Votes.Values ?? Enumerable.Empty<string>()),
-                average = _roomService.CalculateAverage(card?.Votes.Values ?? Enumerable.Empty<string>())
+                consensus = _roomService.CalculateConsensus(cardVotes),
+                average = _roomService.CalculateAverage(cardVotes),
+                coffeeVotes = _roomService.CountCoffeeVotes(cardVotes)
             });
         }
         catch (Exception ex)

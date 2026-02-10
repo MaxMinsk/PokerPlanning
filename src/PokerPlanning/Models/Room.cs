@@ -10,6 +10,9 @@ public class Room
     public Dictionary<string, Player> Players { get; set; } = new();
     public RoomState State { get; set; } = RoomState.Voting;
 
+    // Coffee break voting
+    public bool CoffeeBreakEnabled { get; set; }
+
     // Session timer (optional)
     public int? SessionMinutes { get; set; }          // Total session time in minutes
     public int? SecondsPerCard { get; set; }           // Calculated: SessionMinutes * 60 / Cards.Count

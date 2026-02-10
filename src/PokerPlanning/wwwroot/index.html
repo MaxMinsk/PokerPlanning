@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Planning Poker</title>
-    <link rel="stylesheet" href="/css/style.css?v=1.0.9">
+    <link rel="stylesheet" href="/css/style.css?v=1.1.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -69,6 +69,13 @@
                 </select>
             </div>
 
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="coffeeBreak">
+                    <span>Enable break card <span class="hint">(players can vote ☕ to request a pause)</span></span>
+                </label>
+            </div>
+
             <button id="btnContinue" class="btn btn-primary btn-large">Continue &rarr;</button>
         </div>
     </div>
@@ -126,6 +133,9 @@
                             <span class="stat-value" id="averageValue">-</span>
                         </div>
                     </div>
+                    <div class="coffee-banner" id="coffeeBanner" style="display:none">
+                        ☕ <span id="coffeeBannerText">Break requested!</span>
+                    </div>
                 </div>
                     <div class="players-side" id="playersRight"></div>
                 </div>
@@ -182,6 +192,6 @@
     <div id="toast" class="toast"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
-    <script src="/js/app.js?v=1.0.9"></script>
+    <script src="/js/app.js?v=1.1.0"></script>
 </body>
 </html>
