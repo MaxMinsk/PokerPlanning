@@ -217,6 +217,8 @@ function onError(msg) {
 }
 
 // ===== Rendering =====
+const CARD_COLORS = 8;
+
 function renderRoom(card) {
     document.getElementById('roomCodeBadge').textContent = state.roomCode;
     document.getElementById('questionCounter').textContent =
@@ -227,6 +229,13 @@ function renderRoom(card) {
         document.getElementById('cardDescription').textContent = card.description || '';
     }
 
+    // Apply color based on question index
+    const tableCenter = document.querySelector('.table-center');
+    for (let i = 0; i < CARD_COLORS; i++) {
+        tableCenter.classList.remove(`card-color-${i}`);
+    }
+    tableCenter.classList.add(`card-color-${state.currentCardIndex % CARD_COLORS}`);
+
     document.getElementById('statsDisplay').style.display = 'none';
 
     renderPlayers();
@@ -234,39 +243,73 @@ function renderRoom(card) {
     renderOwnerControls();
 }
 
+function renderPlayerSeat(p) {
+    const vote = state.votes[p.name];
+    const isRevealed = state.roomState === 'Revealed';
+    const hasVoted = p.hasVoted || (vote !== undefined);
+
+    let cardContent = '';
+    let cardClass = 'player-card';
+
+    if (p.isSpectator) {
+        cardContent = '&#128065;';
+        cardClass += ' spectator';
+    } else if (isRevealed && vote !== undefined) {
+        cardContent = escapeHtml(vote);
+        cardClass += ' revealed';
+    } else if (hasVoted) {
+        cardContent = '&#10003;';
+        cardClass += ' voted';
+    }
+
+    const nameClass = p.isOwner ? 'player-name owner' : 'player-name';
+    const badge = p.isSpectator ? ' <span class="spectator-badge">spectator</span>' : '';
+
+    return `
+        <div class="player-seat">
+            <div class="${cardClass}">${cardContent}</div>
+            <div class="${nameClass}">${escapeHtml(p.name)}${badge}</div>
+        </div>
+    `;
+}
+
 function renderPlayers() {
-    const ring = document.getElementById('playersRing');
-    ring.innerHTML = state.players.map(p => {
-        const vote = state.votes[p.name];
-        const isRevealed = state.roomState === 'Revealed';
-        const hasVoted = p.hasVoted || (vote !== undefined);
+    const players = state.players;
+    const count = players.length;
 
-        let cardContent = '';
-        let cardClass = 'player-card';
+    // Distribute players around the table: top, right, bottom, left
+    let top = [], right = [], bottom = [], left = [];
 
-        if (p.isSpectator) {
-            cardContent = '&#128065;'; // eye
-            cardClass += ' spectator';
-        } else if (isRevealed && vote !== undefined) {
-            cardContent = vote;
-            cardClass += ' revealed';
-        } else if (hasVoted) {
-            cardContent = '&#10003;'; // checkmark
-            cardClass += ' voted';
-        } else {
-            cardContent = '';
-        }
+    if (count <= 3) {
+        // 1-3: all on top
+        top = players;
+    } else if (count <= 6) {
+        // 4-6: top and bottom
+        const mid = Math.ceil(count / 2);
+        top = players.slice(0, mid);
+        bottom = players.slice(mid);
+    } else if (count <= 10) {
+        // 7-10: top, left, right, bottom
+        const perSide = Math.floor((count - 2) / 2);
+        const topCount = Math.ceil((count - perSide * 2) / 2);
+        const bottomCount = count - perSide * 2 - topCount;
+        top = players.slice(0, topCount);
+        right = players.slice(topCount, topCount + perSide);
+        bottom = players.slice(topCount + perSide, topCount + perSide + bottomCount);
+        left = players.slice(topCount + perSide + bottomCount);
+    } else {
+        // 11-18: distribute evenly
+        const quarter = Math.ceil(count / 4);
+        top = players.slice(0, quarter);
+        right = players.slice(quarter, quarter * 2);
+        bottom = players.slice(quarter * 2, quarter * 3);
+        left = players.slice(quarter * 3);
+    }
 
-        const nameClass = p.isOwner ? 'player-name owner' : 'player-name';
-        const badge = p.isSpectator ? ' <span class="spectator-badge">spectator</span>' : '';
-
-        return `
-            <div class="player-seat">
-                <div class="${cardClass}">${cardContent}</div>
-                <div class="${nameClass}">${escapeHtml(p.name)}${badge}</div>
-            </div>
-        `;
-    }).join('');
+    document.getElementById('playersTop').innerHTML = top.map(renderPlayerSeat).join('');
+    document.getElementById('playersRight').innerHTML = right.map(renderPlayerSeat).join('');
+    document.getElementById('playersBottom').innerHTML = bottom.map(renderPlayerSeat).join('');
+    document.getElementById('playersLeft').innerHTML = left.map(renderPlayerSeat).join('');
 }
 
 function renderVotingCards() {
