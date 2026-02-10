@@ -3,7 +3,10 @@ using PokerPlanning.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+});
 builder.Services.AddSingleton<RoomService>();
 
 var app = builder.Build();
