@@ -198,6 +198,7 @@ function onVoteUpdated(data) {
     renderRevealedVotes();
     document.getElementById('consensusValue').textContent = data.consensus || '-';
     document.getElementById('averageValue').textContent = data.average != null ? data.average : '-';
+    preselectAcceptValue(data.consensus, data.average);
 }
 
 function onEstimateAccepted(data) {
@@ -380,6 +381,33 @@ function renderRevealed(votes, consensus, average) {
     document.getElementById('statsDisplay').style.display = '';
     document.getElementById('consensusValue').textContent = consensus || '-';
     document.getElementById('averageValue').textContent = average != null ? average : '-';
+
+    preselectAcceptValue(consensus, average);
+}
+
+function preselectAcceptValue(consensus, average) {
+    const select = document.getElementById('acceptSelect');
+    if (!select || select.options.length === 0) return;
+
+    // 1. If consensus exists and is in the scale — use it
+    if (consensus) {
+        const opt = Array.from(select.options).find(o => o.value === String(consensus));
+        if (opt) { select.value = opt.value; return; }
+    }
+
+    // 2. Otherwise find closest scale value to the average
+    if (average != null) {
+        const numericOptions = Array.from(select.options)
+            .map(o => ({ value: o.value, num: parseFloat(o.value) }))
+            .filter(o => !isNaN(o.num));
+        if (numericOptions.length > 0) {
+            const closest = numericOptions.reduce((best, cur) =>
+                Math.abs(cur.num - average) < Math.abs(best.num - average) ? cur : best
+            );
+            select.value = closest.value;
+            return;
+        }
+    }
 }
 
 function renderRevealedVotes() {

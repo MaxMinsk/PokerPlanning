@@ -15,7 +15,7 @@ LABEL \
     io.hass.description="Collaborative estimation tool" \
     io.hass.arch="amd64" \
     io.hass.type="addon" \
-    io.hass.version="1.0.7"
+    io.hass.version="1.0.8"
 
 RUN apk add --no-cache icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
