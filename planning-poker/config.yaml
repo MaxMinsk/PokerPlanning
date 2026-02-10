@@ -1,0 +1,19 @@
+name: "Planning Poker"
+description: "Collaborative estimation tool — Planning Poker with real-time SignalR"
+version: "1.0.0"
+slug: "planning-poker"
+arch:
+  - amd64
+url: "https://github.com/MaxMinsk/PokerPlanning"
+image: "ghcr.io/maxminsk/planning-poker-ha-addon"
+init: false
+homeassistant_api: false
+host_network: false
+ports:
+  5000/tcp: 5000
+ports_description:
+  5000/tcp: "Planning Poker HTTP"
+options:
+  aspnet_environment: "Production"
+schema:
+  aspnet_environment: str

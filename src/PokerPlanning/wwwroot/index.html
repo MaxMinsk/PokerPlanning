@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planning Poker</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- SCREEN: Home -->
+    <div id="screen-home" class="screen active">
+        <div class="container home-container">
+            <div class="logo">&#127183; Planning Poker</div>
+            <div class="home-card">
+                <div class="section">
+                    <h2>Join a Room</h2>
+                    <div class="input-row">
+                        <input type="text" id="joinCode" placeholder="Room code" maxlength="6" autocapitalize="characters">
+                        <button id="btnJoinGo" class="btn btn-primary">Join</button>
+                    </div>
+                </div>
+                <div class="divider"><span>or</span></div>
+                <div class="section">
+                    <button id="btnCreateRoom" class="btn btn-accent btn-large">Create Room</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN: Create Room -->
+    <div id="screen-create" class="screen">
+        <div class="container create-container">
+            <button class="btn-back" onclick="showScreen('home')">&larr; Back</button>
+            <h1>Create Room</h1>
+
+            <div class="form-group">
+                <label for="ownerName">Your name <span class="hint">(leave empty to be a spectator)</span></label>
+                <input type="text" id="ownerName" placeholder="e.g. Maxim">
+            </div>
+
+            <div class="form-group">
+                <label for="scaleSelect">Estimation scale</label>
+                <select id="scaleSelect">
+                    <option value="0">Fibonacci (1, 2, 3, 5, 8, 13, 21)</option>
+                    <option value="1">T-Shirt (XS, S, M, L, XL, XXL)</option>
+                    <option value="2">Powers of 2 (1, 2, 4, 8, 16, 32)</option>
+                    <option value="3">Sequential (1–10)</option>
+                    <option value="4">Risk (Low, Medium, High, Critical)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="cardsText">Questions to estimate <span class="hint">(one per line: Subject;Description)</span></label>
+                <textarea id="cardsText" rows="8" placeholder="AUTH-101;Google OAuth login&#10;AUTH-102;Two-factor authentication&#10;DASH-201;Dashboard redesign"></textarea>
+            </div>
+
+            <button id="btnContinue" class="btn btn-primary btn-large">Continue &rarr;</button>
+        </div>
+    </div>
+
+    <!-- SCREEN: Join Room -->
+    <div id="screen-join" class="screen">
+        <div class="container join-container">
+            <button class="btn-back" onclick="showScreen('home')">&larr; Back</button>
+            <h1>Join Room</h1>
+            <p class="room-code-display">Room: <strong id="joinRoomCode"></strong></p>
+
+            <div class="form-group">
+                <label for="playerName">Your name</label>
+                <input type="text" id="playerName" placeholder="e.g. Alex">
+            </div>
+
+            <button id="btnJoinRoom" class="btn btn-primary btn-large">Join</button>
+        </div>
+    </div>
+
+    <!-- SCREEN: Game Room -->
+    <div id="screen-room" class="screen">
+        <div class="room-layout">
+            <!-- Header -->
+            <div class="room-header">
+                <div class="room-info">
+                    <span class="room-badge" id="roomCodeBadge"></span>
+                    <span class="question-counter" id="questionCounter"></span>
+                </div>
+                <button class="btn btn-small btn-outline" id="btnCopyLink" title="Copy invite link">
+                    &#128203; Copy Link
+                </button>
+            </div>
+
+            <!-- Table area -->
+            <div class="table-area">
+                <div class="players-ring" id="playersRing"></div>
+                <div class="table-center">
+                    <div class="current-card" id="currentCardDisplay">
+                        <div class="card-subject" id="cardSubject"></div>
+                        <div class="card-description" id="cardDescription"></div>
+                    </div>
+                    <div class="stats" id="statsDisplay" style="display:none">
+                        <div class="stat">
+                            <span class="stat-label">Consensus</span>
+                            <span class="stat-value" id="consensusValue">-</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Average</span>
+                            <span class="stat-value" id="averageValue">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Voting cards -->
+            <div class="voting-area" id="votingArea">
+                <div class="voting-label">Your estimate:</div>
+                <div class="voting-cards" id="votingCards"></div>
+            </div>
+
+            <!-- Owner controls -->
+            <div class="owner-controls" id="ownerControls" style="display:none">
+                <button id="btnReveal" class="btn btn-primary">Reveal Cards</button>
+                <button id="btnRevote" class="btn btn-outline" style="display:none">Re-vote</button>
+                <button id="btnNext" class="btn btn-accent" style="display:none">Next Question &rarr;</button>
+                <div class="accept-row" id="acceptRow" style="display:none">
+                    <select id="acceptSelect"></select>
+                    <button id="btnAccept" class="btn btn-small btn-primary">Accept</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCREEN: Results -->
+    <div id="screen-results" class="screen">
+        <div class="container results-container">
+            <h1>Results</h1>
+            <p>Room: <strong id="resultsRoomCode"></strong></p>
+            <div class="results-table-wrapper">
+                <table class="results-table" id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Subject</th>
+                            <th>Description</th>
+                            <th>Estimate</th>
+                            <th>Votes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                    <tfoot id="resultsFoot"></tfoot>
+                </table>
+            </div>
+            <div class="results-actions">
+                <button id="btnDownloadCsv" class="btn btn-primary">&#128229; Download CSV</button>
+                <button id="btnDownloadJson" class="btn btn-outline">&#128229; Download JSON</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast" class="toast"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
