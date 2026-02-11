@@ -26,6 +26,7 @@ public class PokerHub : Hub
             {
                 roomCode = room.Code,
                 playerId = creatorPlayer.PlayerId,
+                myName = creatorPlayer.Name,
                 scale = ScaleDefinitions.GetScale(room.Scale),
                 scaleName = ScaleDefinitions.GetDisplayName(room.Scale),
                 currentCard = new { room.CurrentCard!.Subject, room.CurrentCard.Description },
@@ -128,6 +129,7 @@ public class PokerHub : Hub
         {
             roomCode = room.Code,
             playerId = player.PlayerId,
+            myName = player.Name,
             scale = ScaleDefinitions.GetScale(room.Scale),
             scaleName = ScaleDefinitions.GetDisplayName(room.Scale),
             currentCard = currentCard != null ? new { currentCard.Subject, currentCard.Description } : null,

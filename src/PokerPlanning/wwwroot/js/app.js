@@ -30,6 +30,7 @@ let connection = null;
 let timerInterval = null;
 let state = {
     roomCode: null,
+    myName: null,
     isOwner: false,
     isSpectator: false,
     scale: [],
@@ -153,6 +154,7 @@ document.getElementById('btnExport').addEventListener('click', showExportMenu);
 // ===== Event Handlers: Server =====
 function onRoomCreated(data) {
     state.roomCode = data.roomCode;
+    state.myName = data.myName;
     state.isOwner = data.isOwner;
     state.isSpectator = data.isSpectator;
     state.scale = data.scale;
@@ -179,6 +181,7 @@ function onRoomCreated(data) {
 
 function onRoomState(data) {
     state.roomCode = data.roomCode;
+    state.myName = data.myName;
     state.isOwner = data.isOwner;
     state.isSpectator = data.isSpectator;
     state.scale = data.scale;
@@ -227,11 +230,16 @@ function onPlayerLeft(data) {
             ...p,
             isOwner: p.name === data.newOwnerName
         }));
-        // If we became the new owner
-        const me = state.players.find(p => p.isOwner);
-        if (me) state.isOwner = true;
+        // Check if *this* client became the new owner
+        if (data.newOwnerName === state.myName) {
+            state.isOwner = true;
+            showToast('You are now the room owner!');
+        }
     }
     renderPlayers();
+    renderOwnerControls();
+    // Show/hide owner-only header buttons
+    document.getElementById('btnExport').style.display = state.isOwner ? '' : 'none';
     showToast(`${data.playerName} left`);
 }
 
