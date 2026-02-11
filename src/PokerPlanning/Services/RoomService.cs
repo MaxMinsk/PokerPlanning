@@ -50,6 +50,8 @@ public class RoomService
         return room;
     }
 
+    private static readonly TimeSpan DisconnectGracePeriod = TimeSpan.FromMinutes(5);
+
     public Room? GetRoom(string code) =>
         _rooms.TryGetValue(code.ToUpperInvariant(), out var room) ? room : null;
 
@@ -57,7 +59,16 @@ public class RoomService
     {
         var room = GetRoom(code) ?? throw new ArgumentException("Room not found.");
 
-        if (room.Players.Count >= 18)
+        // Check if there's a disconnected player with the same name — reconnect them
+        var existingByName = room.Players.Values
+            .FirstOrDefault(p => p.Name.Equals(playerName.Trim(), StringComparison.OrdinalIgnoreCase) && !p.IsConnected);
+        if (existingByName != null)
+        {
+            return ReconnectPlayer(room, existingByName, connectionId);
+        }
+
+        var activeCount = room.Players.Values.Count(p => p.IsConnected);
+        if (activeCount >= 18)
             throw new InvalidOperationException("Room is full (max 18 players).");
 
         if (room.Players.ContainsKey(connectionId))
@@ -75,27 +86,95 @@ public class RoomService
         return player;
     }
 
-    public void RemovePlayer(string connectionId)
+    /// <summary>
+    /// Rejoin by playerId (from localStorage). Returns player or null if not found.
+    /// </summary>
+    public Player? RejoinRoom(string code, string playerId, string newConnectionId)
+    {
+        var room = GetRoom(code);
+        if (room == null) return null;
+
+        var player = room.Players.Values.FirstOrDefault(p => p.PlayerId == playerId);
+        if (player == null) return null;
+
+        return ReconnectPlayer(room, player, newConnectionId);
+    }
+
+    private Player ReconnectPlayer(Room room, Player player, string newConnectionId)
+    {
+        var oldConnectionId = player.ConnectionId;
+
+        // Remove old key, update connection, re-add with new key
+        room.Players.Remove(oldConnectionId);
+        player.ConnectionId = newConnectionId;
+        player.DisconnectedAt = null;
+        room.Players[newConnectionId] = player;
+
+        // Migrate votes from old connectionId to new
+        foreach (var card in room.Cards)
+        {
+            if (card.Votes.Remove(oldConnectionId, out var vote))
+            {
+                card.Votes[newConnectionId] = vote;
+            }
+        }
+
+        // Restore ownership if this was the owner
+        if (room.OwnerConnectionId == oldConnectionId)
+        {
+            room.OwnerConnectionId = newConnectionId;
+        }
+
+        return player;
+    }
+
+    public void DisconnectPlayer(string connectionId)
     {
         foreach (var room in _rooms.Values)
         {
-            if (room.Players.Remove(connectionId, out _))
+            if (room.Players.TryGetValue(connectionId, out var player))
             {
-                // If owner left, transfer ownership to first remaining player
-                if (room.IsOwner(connectionId) && room.Players.Count > 0)
-                {
-                    var newOwner = room.Players.Values.First();
-                    newOwner.IsOwner = true;
-                    room.OwnerConnectionId = newOwner.ConnectionId;
-                }
+                player.DisconnectedAt = DateTime.UtcNow;
 
-                // Clean up empty rooms
-                if (room.Players.Count == 0)
+                // If owner disconnected, transfer ownership to first connected player
+                if (room.IsOwner(connectionId))
                 {
-                    _rooms.TryRemove(room.Code, out _);
+                    var newOwner = room.Players.Values.FirstOrDefault(p => p.IsConnected && !p.IsSpectator && p.ConnectionId != connectionId);
+                    if (newOwner != null)
+                    {
+                        player.IsOwner = false;
+                        newOwner.IsOwner = true;
+                        room.OwnerConnectionId = newOwner.ConnectionId;
+                    }
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Clean up players who have been disconnected longer than the grace period.
+    /// Called periodically by a background timer.
+    /// </summary>
+    public (string roomCode, string playerName, string? newOwnerName)? CleanupDisconnected()
+    {
+        var now = DateTime.UtcNow;
+        foreach (var room in _rooms.Values)
+        {
+            var expired = room.Players.Values
+                .Where(p => p.DisconnectedAt.HasValue && (now - p.DisconnectedAt.Value) > DisconnectGracePeriod)
+                .ToList();
+
+            foreach (var player in expired)
+            {
+                room.Players.Remove(player.ConnectionId);
+            }
+
+            if (room.Players.Count == 0)
+            {
+                _rooms.TryRemove(room.Code, out _);
+            }
+        }
+        return null;
     }
 
     public Room? GetRoomByPlayer(string connectionId)
@@ -205,6 +284,14 @@ public class RoomService
                 result[player.Name] = vote;
         }
         return result;
+    }
+
+    /// <summary>
+    /// Get connected players for display (filter out disconnected from player list shown to others).
+    /// </summary>
+    public IEnumerable<Player> GetActivePlayers(Room room)
+    {
+        return room.Players.Values.Where(p => p.IsConnected);
     }
 
     public const string CoffeeVote = "☕";

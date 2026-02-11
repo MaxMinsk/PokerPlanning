@@ -21,19 +21,21 @@ public class PokerHub : Hub
             var room = _roomService.CreateRoom(ownerName, scale, cardsText, Context.ConnectionId, sessionMinutes, coffeeBreak);
 
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
+            var creatorPlayer = room.Players[Context.ConnectionId];
             await Clients.Caller.SendAsync("RoomCreated", new
             {
                 roomCode = room.Code,
+                playerId = creatorPlayer.PlayerId,
                 scale = ScaleDefinitions.GetScale(room.Scale),
                 scaleName = ScaleDefinitions.GetDisplayName(room.Scale),
                 currentCard = new { room.CurrentCard!.Subject, room.CurrentCard.Description },
                 currentCardIndex = room.CurrentCardIndex,
                 totalCards = room.Cards.Count,
                 isOwner = true,
-                isSpectator = room.Players[Context.ConnectionId].IsSpectator,
+                isSpectator = creatorPlayer.IsSpectator,
                 secondsPerCard = room.SecondsPerCard,
                 coffeeBreakEnabled = room.CoffeeBreakEnabled,
-                players = room.Players.Values.Select(p => new
+                players = _roomService.GetActivePlayers(room).Select(p => new
                 {
                     name = p.Name,
                     isOwner = p.IsOwner,
@@ -69,52 +71,93 @@ public class PokerHub : Hub
                 isOwner = player.IsOwner,
                 isSpectator = player.IsSpectator,
                 hasVoted = false,
-                playerCount = room.Players.Count
+                playerCount = _roomService.GetActivePlayers(room).Count()
             });
 
-            // Send full state to joining player
-            var currentCard = room.CurrentCard;
-            var namedVotes = room.State == RoomState.Revealed
-                ? _roomService.GetNamedVotes(room)
-                : new Dictionary<string, string>();
-
-            await Clients.Caller.SendAsync("RoomState", new
-            {
-                roomCode = room.Code,
-                scale = ScaleDefinitions.GetScale(room.Scale),
-                scaleName = ScaleDefinitions.GetDisplayName(room.Scale),
-                currentCard = currentCard != null ? new { currentCard.Subject, currentCard.Description } : null,
-                currentCardIndex = room.CurrentCardIndex,
-                totalCards = room.Cards.Count,
-                state = room.State.ToString(),
-                isOwner = false,
-                isSpectator = false,
-                secondsPerCard = room.SecondsPerCard,
-                cardTimerStartedAt = room.CardTimerStartedAt?.ToString("o"),
-                coffeeBreakEnabled = room.CoffeeBreakEnabled,
-                players = room.Players.Values.Select(p => new
-                {
-                    name = p.Name,
-                    isOwner = p.IsOwner,
-                    isSpectator = p.IsSpectator,
-                    hasVoted = currentCard != null && currentCard.Votes.ContainsKey(p.ConnectionId)
-                }),
-                votes = room.State == RoomState.Revealed ? namedVotes : null,
-                consensus = room.State == RoomState.Revealed
-                    ? _roomService.CalculateConsensus(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
-                    : null,
-                average = room.State == RoomState.Revealed
-                    ? _roomService.CalculateAverage(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
-                    : null,
-                coffeeVotes = room.State == RoomState.Revealed
-                    ? _roomService.CountCoffeeVotes(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
-                    : 0
-            });
+            await SendFullState(room, player);
         }
         catch (Exception ex)
         {
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
+    }
+
+    public async Task RejoinRoom(string roomCode, string playerId)
+    {
+        try
+        {
+            var player = _roomService.RejoinRoom(roomCode, playerId, Context.ConnectionId);
+            if (player == null)
+            {
+                await Clients.Caller.SendAsync("RejoinFailed", "Session expired or room not found.");
+                return;
+            }
+
+            var room = _roomService.GetRoom(roomCode)!;
+            await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
+
+            // Notify others that player is back
+            await Clients.OthersInGroup(room.Code).SendAsync("PlayerJoined", new
+            {
+                name = player.Name,
+                isOwner = player.IsOwner,
+                isSpectator = player.IsSpectator,
+                hasVoted = room.CurrentCard?.Votes.ContainsKey(Context.ConnectionId) ?? false,
+                playerCount = _roomService.GetActivePlayers(room).Count()
+            });
+
+            await SendFullState(room, player);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("RejoinFailed", ex.Message);
+        }
+    }
+
+    private async Task SendFullState(Room room, Player player)
+    {
+        var currentCard = room.CurrentCard;
+        var namedVotes = room.State == RoomState.Revealed
+            ? _roomService.GetNamedVotes(room)
+            : new Dictionary<string, string>();
+
+        // Check if this player has voted on the current card
+        var myVote = currentCard?.Votes.TryGetValue(player.ConnectionId, out var v) == true ? v : null;
+
+        await Clients.Caller.SendAsync("RoomState", new
+        {
+            roomCode = room.Code,
+            playerId = player.PlayerId,
+            scale = ScaleDefinitions.GetScale(room.Scale),
+            scaleName = ScaleDefinitions.GetDisplayName(room.Scale),
+            currentCard = currentCard != null ? new { currentCard.Subject, currentCard.Description } : null,
+            currentCardIndex = room.CurrentCardIndex,
+            totalCards = room.Cards.Count,
+            state = room.State.ToString(),
+            isOwner = player.IsOwner,
+            isSpectator = player.IsSpectator,
+            myVote,
+            secondsPerCard = room.SecondsPerCard,
+            cardTimerStartedAt = room.CardTimerStartedAt?.ToString("o"),
+            coffeeBreakEnabled = room.CoffeeBreakEnabled,
+            players = _roomService.GetActivePlayers(room).Select(p => new
+            {
+                name = p.Name,
+                isOwner = p.IsOwner,
+                isSpectator = p.IsSpectator,
+                hasVoted = currentCard != null && currentCard.Votes.ContainsKey(p.ConnectionId)
+            }),
+            votes = room.State == RoomState.Revealed ? namedVotes : null,
+            consensus = room.State == RoomState.Revealed
+                ? _roomService.CalculateConsensus(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
+                : null,
+            average = room.State == RoomState.Revealed
+                ? _roomService.CalculateAverage(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
+                : null,
+            coffeeVotes = room.State == RoomState.Revealed
+                ? _roomService.CountCoffeeVotes(currentCard?.Votes.Values ?? Enumerable.Empty<string>())
+                : 0
+        });
     }
 
     public async Task Vote(string roomCode, string value)
@@ -283,15 +326,17 @@ public class PokerHub : Hub
             var player = room.Players.GetValueOrDefault(Context.ConnectionId);
             var playerName = player?.Name ?? "Unknown";
 
-            _roomService.RemovePlayer(Context.ConnectionId);
+            // Mark as disconnected (grace period) instead of removing immediately
+            _roomService.DisconnectPlayer(Context.ConnectionId);
 
-            if (room.Players.Count > 0)
+            var activePlayers = _roomService.GetActivePlayers(room);
+            if (activePlayers.Any())
             {
                 var newOwner = room.GetOwner();
                 await Clients.Group(room.Code).SendAsync("PlayerLeft", new
                 {
                     playerName,
-                    playerCount = room.Players.Count,
+                    playerCount = activePlayers.Count(),
                     newOwnerName = newOwner?.Name
                 });
             }

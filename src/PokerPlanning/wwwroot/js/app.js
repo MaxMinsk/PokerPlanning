@@ -1,3 +1,30 @@
+// ===== Session Persistence =====
+const SESSION_KEY = 'poker_session';
+
+function saveSession(roomCode, playerId, playerName) {
+    try {
+        localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, playerId, playerName, ts: Date.now() }));
+    } catch (e) { /* ignore */ }
+}
+
+function loadSession() {
+    try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        // Expire after 2 hours
+        if (Date.now() - s.ts > 2 * 60 * 60 * 1000) {
+            localStorage.removeItem(SESSION_KEY);
+            return null;
+        }
+        return s;
+    } catch (e) { return null; }
+}
+
+function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+}
+
 // ===== State =====
 let connection = null;
 let timerInterval = null;
@@ -37,10 +64,18 @@ function initConnection() {
     connection.on("GameFinished", onGameFinished);
     connection.on("Results", onResults);
     connection.on("PlayerThinking", onPlayerThinking);
+    connection.on("RejoinFailed", onRejoinFailed);
     connection.on("Error", onError);
 
     connection.onreconnecting(() => showToast("Reconnecting..."));
-    connection.onreconnected(() => showToast("Reconnected!"));
+    connection.onreconnected(async () => {
+        showToast("Reconnected!");
+        // Auto-rejoin room after SignalR reconnect
+        const session = loadSession();
+        if (session && session.roomCode && session.playerId) {
+            connection.invoke("RejoinRoom", session.roomCode, session.playerId).catch(() => {});
+        }
+    });
 
     return connection.start();
 }
@@ -128,6 +163,10 @@ function onRoomCreated(data) {
     state.secondsPerCard = data.secondsPerCard || null;
     state.coffeeBreakEnabled = data.coffeeBreakEnabled || false;
 
+    // Save session for reconnect
+    const me = data.players.find(p => p.isOwner);
+    saveSession(data.roomCode, data.playerId, me ? me.name : 'Spectator');
+
     renderRoom(data.currentCard);
     startCardTimer();
     showScreen('room');
@@ -143,10 +182,14 @@ function onRoomState(data) {
     state.currentCardIndex = data.currentCardIndex;
     state.totalCards = data.totalCards;
     state.roomState = data.state;
-    state.selectedVote = null;
+    state.selectedVote = data.myVote || null;
     state.votes = data.votes || {};
     state.secondsPerCard = data.secondsPerCard || null;
     state.coffeeBreakEnabled = data.coffeeBreakEnabled || false;
+
+    // Save/update session for reconnect
+    const me = data.players.find(p => p.name && !p.isSpectator) || data.players[0];
+    saveSession(data.roomCode, data.playerId, me ? me.name : 'Player');
 
     // Restore timer from server timestamp
     if (data.secondsPerCard && data.cardTimerStartedAt) {
@@ -230,6 +273,7 @@ function onGameFinished(data) {
     state.roomState = 'Finished';
     state.results = data.results;
     stopCardTimer();
+    clearSession();
     renderResults(data.results);
     showScreen('results');
 }
@@ -238,6 +282,18 @@ function onResults(data) {
     state.results = data.results;
     renderResults(data.results);
     showScreen('results');
+}
+
+function onRejoinFailed(msg) {
+    clearSession();
+    // Fall back to join screen for this room
+    const path = window.location.pathname;
+    const roomMatch = path.match(/^\/room\/([A-Za-z0-9]+)$/);
+    if (roomMatch) {
+        navigateToJoin(roomMatch[1].toUpperCase());
+    } else {
+        showScreen('home');
+    }
 }
 
 function onError(msg) {
@@ -639,19 +695,38 @@ async function handleRoute() {
     // /join/CODE — show join screen
     const joinMatch = path.match(/^\/join\/([A-Za-z0-9]+)$/);
     if (joinMatch) {
-        navigateToJoin(joinMatch[1].toUpperCase());
+        const code = joinMatch[1].toUpperCase();
+        // Try auto-rejoin if we have a session for this room
+        if (await tryAutoRejoin(code)) return;
+        navigateToJoin(code);
         return;
     }
 
-    // /room/CODE — try to rejoin (shows join screen if no connection)
+    // /room/CODE — try to rejoin from session
     const roomMatch = path.match(/^\/room\/([A-Za-z0-9]+)$/);
     if (roomMatch) {
-        navigateToJoin(roomMatch[1].toUpperCase());
+        const code = roomMatch[1].toUpperCase();
+        if (await tryAutoRejoin(code)) return;
+        navigateToJoin(code);
         return;
     }
 
     // Default: home
     showScreen('home');
+}
+
+async function tryAutoRejoin(roomCode) {
+    const session = loadSession();
+    if (!session || session.roomCode !== roomCode || !session.playerId) return false;
+
+    try {
+        await ensureConnected();
+        await connection.invoke("RejoinRoom", session.roomCode, session.playerId);
+        return true;
+    } catch (e) {
+        clearSession();
+        return false;
+    }
 }
 
 // ===== Init =====

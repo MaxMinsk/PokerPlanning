@@ -23,6 +23,13 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.MapHub<PokerHub>("/pokerhub");
 
+// Background cleanup of disconnected players (every 60 seconds)
+var cleanupTimer = new Timer(_ =>
+{
+    var roomService = app.Services.GetRequiredService<RoomService>();
+    roomService.CleanupDisconnected();
+}, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+
 // Fallback: serve index.html for SPA routes
 app.MapFallbackToFile("index.html");
 
