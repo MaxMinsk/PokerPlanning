@@ -68,8 +68,8 @@ public class RoomService
         }
 
         var activeCount = room.Players.Values.Count(p => p.IsConnected);
-        if (activeCount >= 18)
-            throw new InvalidOperationException("Room is full (max 18 players).");
+        if (activeCount >= 50)
+            throw new InvalidOperationException("Room is full (max 50 players).");
 
         if (room.Players.ContainsKey(connectionId))
             return room.Players[connectionId];

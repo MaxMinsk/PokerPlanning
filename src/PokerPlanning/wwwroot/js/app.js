@@ -476,33 +476,31 @@ function renderPlayers() {
     const players = state.players;
     const count = players.length;
 
-    // Distribute players around the table: top, right, bottom, left
+    // Distribute players around the table: top, left, right, bottom
+    // Rule: sides (left/right) hold max 3 each, everything else goes top/bottom
+    const MAX_SIDE = 3;
     let top = [], right = [], bottom = [], left = [];
 
     if (count <= 3) {
-        // 1-3: all on top
         top = players;
     } else if (count <= 6) {
-        // 4-6: top and bottom
         const mid = Math.ceil(count / 2);
         top = players.slice(0, mid);
         bottom = players.slice(mid);
-    } else if (count <= 10) {
-        // 7-10: top, left, right, bottom
-        const perSide = Math.floor((count - 2) / 2);
-        const topCount = Math.ceil((count - perSide * 2) / 2);
-        const bottomCount = count - perSide * 2 - topCount;
-        top = players.slice(0, topCount);
-        right = players.slice(topCount, topCount + perSide);
-        bottom = players.slice(topCount + perSide, topCount + perSide + bottomCount);
-        left = players.slice(topCount + perSide + bottomCount);
     } else {
-        // 11-18: distribute evenly
-        const quarter = Math.ceil(count / 4);
-        top = players.slice(0, quarter);
-        right = players.slice(quarter, quarter * 2);
-        bottom = players.slice(quarter * 2, quarter * 3);
-        left = players.slice(quarter * 3);
+        // Assign up to MAX_SIDE per side, rest to top/bottom
+        const sideTotal = Math.min(count - 2, MAX_SIDE * 2); // at least 1 top + 1 bottom
+        const leftCount = Math.ceil(sideTotal / 2);
+        const rightCount = sideTotal - leftCount;
+        const remaining = count - leftCount - rightCount;
+        const topCount = Math.ceil(remaining / 2);
+        const bottomCount = remaining - topCount;
+
+        let idx = 0;
+        top = players.slice(idx, idx + topCount); idx += topCount;
+        right = players.slice(idx, idx + rightCount); idx += rightCount;
+        bottom = players.slice(idx, idx + bottomCount); idx += bottomCount;
+        left = players.slice(idx, idx + leftCount);
     }
 
     document.getElementById('playersTop').innerHTML = top.map(renderPlayerSeat).join('');
