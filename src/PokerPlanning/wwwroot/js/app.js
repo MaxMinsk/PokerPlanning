@@ -342,7 +342,7 @@ function renderRoom(card) {
 
     if (card) {
         document.getElementById('cardSubject').textContent = card.subject;
-        document.getElementById('cardDescription').textContent = card.description || '';
+        document.getElementById('cardDescription').innerHTML = card.description || '';
     }
 
     // Apply color based on question index

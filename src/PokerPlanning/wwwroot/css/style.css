@@ -376,6 +376,21 @@ textarea { resize: vertical; font-family: 'Courier New', monospace; }
 .card-description {
     font-size: 0.95rem;
     color: rgba(255, 255, 255, 0.7);
+    line-height: 1.5;
+}
+.card-description .meta {
+    font-size: 0.8rem;
+    opacity: 0.65;
+}
+.card-description .highlight {
+    font-weight: 600;
+    color: #fbbf24;
+}
+.card-description code {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    font-size: 0.85em;
 }
 
 .stats {
