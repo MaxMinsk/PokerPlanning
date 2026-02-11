@@ -99,9 +99,10 @@ document.getElementById('btnNext').addEventListener('click', () => {
     connection.invoke("NextQuestion", state.roomCode);
 });
 
-document.getElementById('btnAccept').addEventListener('click', () => {
+document.getElementById('btnAccept').addEventListener('click', async () => {
     const val = document.getElementById('acceptSelect').value;
-    connection.invoke("AcceptEstimate", state.roomCode, val);
+    await connection.invoke("AcceptEstimate", state.roomCode, val);
+    connection.invoke("NextQuestion", state.roomCode);
 });
 
 document.getElementById('btnCopyLink').addEventListener('click', () => {
