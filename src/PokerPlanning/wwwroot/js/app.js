@@ -148,6 +148,8 @@ document.getElementById('btnCopyLink').addEventListener('click', () => {
 document.getElementById('btnDownloadCsv').addEventListener('click', downloadCsv);
 document.getElementById('btnDownloadJson').addEventListener('click', downloadJson);
 
+document.getElementById('btnExport').addEventListener('click', showExportMenu);
+
 // ===== Event Handlers: Server =====
 function onRoomCreated(data) {
     state.roomCode = data.roomCode;
@@ -167,6 +169,8 @@ function onRoomCreated(data) {
     const me = data.players.find(p => p.isOwner);
     saveSession(data.roomCode, data.playerId, me ? me.name : 'Spectator');
 
+    resetActivityTracking();
+    startSleepCheck();
     renderRoom(data.currentCard);
     startCardTimer();
     showScreen('room');
@@ -197,12 +201,15 @@ function onRoomState(data) {
         state.timerDeadline = new Date(started.getTime() + data.secondsPerCard * 1000);
     }
 
+    resetActivityTracking();
+    if (data.state === 'Voting') startSleepCheck();
     renderRoom(data.currentCard);
     if (data.state === 'Voting') startCardTimer();
     showScreen('room');
     updateUrl(`/room/${data.roomCode}`);
 
     if (data.state === 'Revealed' && data.votes) {
+        stopSleepCheck();
         renderRevealed(data.votes, data.consensus, data.average, data.coffeeVotes);
     }
 }
@@ -229,6 +236,7 @@ function onPlayerLeft(data) {
 }
 
 function onVoteReceived(data) {
+    playerLastActivity[data.playerName] = Date.now();
     state.players = state.players.map(p =>
         p.name === data.playerName ? { ...p, hasVoted: true } : p
     );
@@ -239,6 +247,7 @@ function onCardsRevealed(data) {
     state.roomState = 'Revealed';
     state.votes = data.votes;
     stopCardTimer();
+    stopSleepCheck();
     renderRevealed(data.votes, data.consensus, data.average, data.coffeeVotes);
 }
 
@@ -264,6 +273,8 @@ function onNewRound(data) {
     state.secondsPerCard = data.secondsPerCard || state.secondsPerCard;
     state.players = state.players.map(p => ({ ...p, hasVoted: false }));
 
+    resetActivityTracking();
+    startSleepCheck();
     renderRoom(data.card);
     startCardTimer();
     document.getElementById('coffeeBanner').style.display = 'none';
@@ -273,6 +284,7 @@ function onGameFinished(data) {
     state.roomState = 'Finished';
     state.results = data.results;
     stopCardTimer();
+    stopSleepCheck();
     clearSession();
     renderResults(data.results);
     showScreen('results');
@@ -280,8 +292,17 @@ function onGameFinished(data) {
 
 function onResults(data) {
     state.results = data.results;
-    renderResults(data.results);
-    showScreen('results');
+    if (state._exportPending) {
+        state._exportPending = false;
+        if (state._exportFormat === 'json') {
+            downloadJson();
+        } else {
+            downloadCsv();
+        }
+    } else {
+        renderResults(data.results);
+        showScreen('results');
+    }
 }
 
 function onRejoinFailed(msg) {
@@ -300,23 +321,81 @@ function onError(msg) {
     showToast(msg, true);
 }
 
-// ===== Player Thinking (wobble) =====
+// ===== Player Thinking (wobble) & Sleeping (Zzz) =====
+const SLEEP_TIMEOUT = 30_000; // 30 seconds
+const playerLastActivity = {}; // { playerName: timestamp }
+let sleepCheckInterval = null;
+
 function onPlayerThinking(data) {
+    playerLastActivity[data.playerName] = Date.now();
+
     const seat = document.querySelector(`.player-seat[data-player="${CSS.escape(data.playerName)}"]`);
     if (!seat) return;
     const card = seat.querySelector('.player-card');
     if (!card) return;
 
+    // Wake up — remove sleeping if present
+    card.classList.remove('sleeping');
+
     // Remove and re-add class to restart animation
     card.classList.remove('thinking');
-    // Force reflow to restart animation
     void card.offsetWidth;
     card.classList.add('thinking');
 
-    // Remove after animation ends
     card.addEventListener('animationend', () => {
         card.classList.remove('thinking');
     }, { once: true });
+}
+
+function resetActivityTracking() {
+    const now = Date.now();
+    for (const key of Object.keys(playerLastActivity)) {
+        delete playerLastActivity[key];
+    }
+    // Mark all current non-spectator players as active now
+    (state.players || []).forEach(p => {
+        if (!p.isSpectator) playerLastActivity[p.name] = now;
+    });
+}
+
+function startSleepCheck() {
+    stopSleepCheck();
+    sleepCheckInterval = setInterval(updateSleepIndicators, 5000);
+}
+
+function stopSleepCheck() {
+    if (sleepCheckInterval) { clearInterval(sleepCheckInterval); sleepCheckInterval = null; }
+    // Remove all sleeping classes
+    document.querySelectorAll('.player-card.sleeping').forEach(c => c.classList.remove('sleeping'));
+}
+
+function updateSleepIndicators() {
+    if (state.roomState !== 'Voting') return;
+
+    const now = Date.now();
+    // Check if at least one non-spectator player has voted
+    const someoneVoted = state.players.some(p =>
+        !p.isSpectator && (p.hasVoted || state.votes[p.name] !== undefined)
+    );
+    if (!someoneVoted) return;
+
+    state.players.forEach(p => {
+        if (p.isSpectator) return;
+        const hasVoted = p.hasVoted || state.votes[p.name] !== undefined;
+        const seat = document.querySelector(`.player-seat[data-player="${CSS.escape(p.name)}"]`);
+        if (!seat) return;
+        const card = seat.querySelector('.player-card');
+        if (!card) return;
+
+        const lastActive = playerLastActivity[p.name] || 0;
+        const idle = now - lastActive >= SLEEP_TIMEOUT;
+
+        if (!hasVoted && idle) {
+            card.classList.add('sleeping');
+        } else {
+            card.classList.remove('sleeping');
+        }
+    });
 }
 
 let thinkingThrottleTimer = null;
@@ -354,6 +433,9 @@ function renderRoom(card) {
 
     document.getElementById('statsDisplay').style.display = 'none';
     document.getElementById('coffeeBanner').style.display = 'none';
+
+    // Show export button for owner
+    document.getElementById('btnExport').style.display = state.isOwner ? '' : 'none';
 
     renderPlayers();
     renderVotingCards();
@@ -577,14 +659,51 @@ async function castVote(value) {
     await connection.invoke("Vote", state.roomCode, value);
 }
 
+// ===== Export (mid-session) =====
+function showExportMenu() {
+    // Remove existing menu if any
+    const existing = document.getElementById('exportMenu');
+    if (existing) { existing.remove(); return; }
+
+    const btn = document.getElementById('btnExport');
+    const menu = document.createElement('div');
+    menu.id = 'exportMenu';
+    menu.className = 'export-menu';
+    menu.innerHTML = `
+        <button class="export-menu-item" data-format="csv">&#128196; CSV</button>
+        <button class="export-menu-item" data-format="json">&#128196; JSON</button>
+    `;
+    btn.parentElement.style.position = 'relative';
+    btn.parentElement.appendChild(menu);
+
+    menu.querySelectorAll('.export-menu-item').forEach(item => {
+        item.addEventListener('click', async () => {
+            state._exportPending = true;
+            state._exportFormat = item.dataset.format;
+            menu.remove();
+            await connection.invoke("GetResults", state.roomCode);
+        });
+    });
+
+    // Close on outside click
+    setTimeout(() => {
+        document.addEventListener('click', function closeMenu(e) {
+            if (!menu.contains(e.target) && e.target !== btn) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        });
+    }, 0);
+}
+
 // ===== Downloads =====
 function downloadCsv() {
     if (!state.results) return;
-    const rows = [['#', 'Subject', 'Description', 'Estimate', 'Votes']];
+    const rows = [['#', 'Subject', 'Estimate', 'Votes']];
 
     state.results.forEach(r => {
         const votesStr = Object.entries(r.votes || {}).map(([n, v]) => `${n}:${v}`).join(' | ');
-        rows.push([r.index, r.subject, r.description || '', r.estimate || '', votesStr]);
+        rows.push([r.index, r.subject, r.estimate || '', votesStr]);
     });
 
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -593,7 +712,13 @@ function downloadCsv() {
 
 function downloadJson() {
     if (!state.results) return;
-    const json = JSON.stringify({ roomCode: state.roomCode, results: state.results }, null, 2);
+    const compact = state.results.map(r => ({
+        index: r.index,
+        subject: r.subject,
+        estimate: r.estimate,
+        votes: r.votes
+    }));
+    const json = JSON.stringify({ roomCode: state.roomCode, results: compact }, null, 2);
     downloadFile(`planning-poker-${state.roomCode}.json`, json, 'application/json');
 }
 

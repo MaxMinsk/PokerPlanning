@@ -199,6 +199,36 @@ textarea { resize: vertical; font-family: 'Courier New', monospace; }
 }
 
 .room-info { display: flex; align-items: center; gap: 1rem; }
+.room-header-actions { display: flex; align-items: center; gap: 0.5rem; position: relative; }
+
+.export-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.25rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    z-index: 100;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4);
+    min-width: 120px;
+}
+.export-menu-item {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+.export-menu-item:hover {
+    background: var(--bg-card-hover);
+}
 
 .room-badge {
     background: var(--primary);
@@ -332,6 +362,27 @@ textarea { resize: vertical; font-family: 'Courier New', monospace; }
     60%  { transform: rotate(-2deg); }
     75%  { transform: rotate(1deg); }
     100% { transform: rotate(0deg); }
+}
+
+/* Sleeping indicator */
+.player-card.sleeping {
+    opacity: 0.5;
+    position: relative;
+}
+.player-card.sleeping::after {
+    content: 'Zzz';
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--warning);
+    animation: zzz 2s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes zzz {
+    0%, 100% { opacity: 0.4; transform: translateY(0); }
+    50%      { opacity: 1;   transform: translateY(-4px); }
 }
 
 .player-name {
