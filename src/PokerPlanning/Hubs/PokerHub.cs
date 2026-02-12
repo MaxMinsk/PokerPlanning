@@ -7,10 +7,12 @@ namespace PokerPlanning.Hubs;
 public class PokerHub : Hub
 {
     private readonly RoomService _roomService;
+    private readonly ILogger<PokerHub> _logger;
 
-    public PokerHub(RoomService roomService)
+    public PokerHub(RoomService roomService, ILogger<PokerHub> logger)
     {
         _roomService = roomService;
+        _logger = logger;
     }
 
     public async Task CreateRoom(string? ownerName, int scaleType, string cardsText, int? sessionMinutes = null, bool coffeeBreak = false, bool shuffle = false)
@@ -22,6 +24,10 @@ public class PokerHub : Hub
 
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
             var creatorPlayer = room.Players[Context.ConnectionId];
+
+            _logger.LogInformation("Room {RoomCode} created by \"{OwnerName}\" ({ScaleName}, {CardCount} cards, shuffle={Shuffle})",
+                room.Code, creatorPlayer.Name, ScaleDefinitions.GetDisplayName(room.Scale), room.Cards.Count, shuffle);
+
             await Clients.Caller.SendAsync("RoomCreated", new
             {
                 roomCode = room.Code,
@@ -47,6 +53,7 @@ public class PokerHub : Hub
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "CreateRoom failed for {ConnectionId}", Context.ConnectionId);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -58,12 +65,17 @@ public class PokerHub : Hub
             var room = _roomService.GetRoom(roomCode);
             if (room == null)
             {
+                _logger.LogWarning("JoinRoom: room {RoomCode} not found for {ConnectionId}", roomCode, Context.ConnectionId);
                 await Clients.Caller.SendAsync("Error", "Room not found.");
                 return;
             }
 
             var player = _roomService.JoinRoom(roomCode, playerName, Context.ConnectionId);
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
+
+            var activeCount = _roomService.GetActivePlayers(room).Count();
+            _logger.LogInformation("Player \"{PlayerName}\" joined room {RoomCode} ({PlayerCount} players)",
+                player.Name, room.Code, activeCount);
 
             // Notify others
             await Clients.OthersInGroup(room.Code).SendAsync("PlayerJoined", new
@@ -72,13 +84,14 @@ public class PokerHub : Hub
                 isOwner = player.IsOwner,
                 isSpectator = player.IsSpectator,
                 hasVoted = false,
-                playerCount = _roomService.GetActivePlayers(room).Count()
+                playerCount = activeCount
             });
 
             await SendFullState(room, player);
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "JoinRoom failed for {ConnectionId} in room {RoomCode}", Context.ConnectionId, roomCode);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -90,12 +103,17 @@ public class PokerHub : Hub
             var player = _roomService.RejoinRoom(roomCode, playerId, Context.ConnectionId);
             if (player == null)
             {
+                _logger.LogInformation("Rejoin failed: session expired or room {RoomCode} not found (playerId={PlayerId})",
+                    roomCode, playerId);
                 await Clients.Caller.SendAsync("RejoinFailed", "Session expired or room not found.");
                 return;
             }
 
             var room = _roomService.GetRoom(roomCode)!;
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
+
+            _logger.LogInformation("Player \"{PlayerName}\" rejoined room {RoomCode} (isOwner={IsOwner})",
+                player.Name, room.Code, player.IsOwner);
 
             // Notify others that player is back
             await Clients.OthersInGroup(room.Code).SendAsync("PlayerJoined", new
@@ -111,6 +129,7 @@ public class PokerHub : Hub
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "RejoinRoom failed for {ConnectionId} in room {RoomCode}", Context.ConnectionId, roomCode);
             await Clients.Caller.SendAsync("RejoinFailed", ex.Message);
         }
     }
@@ -195,6 +214,8 @@ public class PokerHub : Hub
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Vote failed for {ConnectionId} in room {RoomCode}, value={Value}",
+                Context.ConnectionId, roomCode, value);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -208,16 +229,21 @@ public class PokerHub : Hub
             var card = room.CurrentCard;
 
             var cardVotes = card?.Votes.Values ?? Enumerable.Empty<string>();
+            var consensus = _roomService.CalculateConsensus(cardVotes);
+            _logger.LogInformation("Cards revealed in {RoomCode} card #{CardIndex}, consensus={Consensus}, votes={VoteCount}",
+                room.Code, room.CurrentCardIndex + 1, consensus ?? "none", namedVotes.Count);
+
             await Clients.Group(room.Code).SendAsync("CardsRevealed", new
             {
                 votes = namedVotes,
-                consensus = _roomService.CalculateConsensus(cardVotes),
+                consensus,
                 average = _roomService.CalculateAverage(cardVotes),
                 coffeeVotes = _roomService.CountCoffeeVotes(cardVotes)
             });
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "RevealCards failed for {ConnectionId} in room {RoomCode}", Context.ConnectionId, roomCode);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -228,6 +254,8 @@ public class PokerHub : Hub
         {
             _roomService.AcceptEstimate(roomCode, Context.ConnectionId, value);
 
+            _logger.LogInformation("Estimate accepted in {RoomCode}: {Value}", roomCode, value);
+
             await Clients.Group(roomCode.ToUpperInvariant()).SendAsync("EstimateAccepted", new
             {
                 value
@@ -235,6 +263,7 @@ public class PokerHub : Hub
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "AcceptEstimate failed for {ConnectionId} in room {RoomCode}", Context.ConnectionId, roomCode);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -246,6 +275,8 @@ public class PokerHub : Hub
             _roomService.Revote(roomCode, Context.ConnectionId);
             var room = _roomService.GetRoom(roomCode)!;
 
+            _logger.LogInformation("Revote triggered in {RoomCode} card #{CardIndex}", room.Code, room.CurrentCardIndex + 1);
+
             await Clients.Group(room.Code).SendAsync("NewRound", new
             {
                 cardIndex = room.CurrentCardIndex,
@@ -256,6 +287,7 @@ public class PokerHub : Hub
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Revote failed for {ConnectionId} in room {RoomCode}", Context.ConnectionId, roomCode);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -270,6 +302,7 @@ public class PokerHub : Hub
             if (nextCard == null)
             {
                 // Game finished
+                _logger.LogInformation("Game finished in {RoomCode} ({CardCount} cards)", room.Code, room.Cards.Count);
                 var results = _roomService.GetResults(roomCode);
                 await Clients.Group(room.Code).SendAsync("GameFinished", new
                 {
@@ -278,6 +311,8 @@ public class PokerHub : Hub
             }
             else
             {
+                _logger.LogInformation("Next question in {RoomCode}: card #{CardIndex}/{TotalCards}",
+                    room.Code, room.CurrentCardIndex + 1, room.Cards.Count);
                 await Clients.Group(room.Code).SendAsync("NewRound", new
                 {
                     cardIndex = room.CurrentCardIndex,
@@ -289,6 +324,7 @@ public class PokerHub : Hub
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "NextQuestion failed for {ConnectionId} in room {RoomCode}", Context.ConnectionId, roomCode);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -316,6 +352,7 @@ public class PokerHub : Hub
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "GetResults failed for {ConnectionId} in room {RoomCode}", Context.ConnectionId, roomCode);
             await Clients.Caller.SendAsync("Error", ex.Message);
         }
     }
@@ -340,6 +377,13 @@ public class PokerHub : Hub
                 if (wasOwner)
                 {
                     newOwnerName = room.GetOwner()?.Name;
+                    _logger.LogWarning("Owner \"{PlayerName}\" disconnected from {RoomCode}, transferred to \"{NewOwner}\"",
+                        playerName, room.Code, newOwnerName ?? "nobody");
+                }
+                else
+                {
+                    _logger.LogInformation("Player \"{PlayerName}\" disconnected from {RoomCode} ({PlayerCount} remaining)",
+                        playerName, room.Code, activePlayers.Count());
                 }
 
                 await Clients.Group(room.Code).SendAsync("PlayerLeft", new
@@ -349,6 +393,11 @@ public class PokerHub : Hub
                     newOwnerName
                 });
             }
+        }
+
+        if (exception != null)
+        {
+            _logger.LogError(exception, "Connection {ConnectionId} disconnected with error", Context.ConnectionId);
         }
 
         await base.OnDisconnectedAsync(exception);

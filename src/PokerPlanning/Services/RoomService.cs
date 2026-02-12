@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using PokerPlanning.Models;
 
 namespace PokerPlanning.Services;
@@ -7,6 +8,15 @@ public class RoomService
 {
     private readonly ConcurrentDictionary<string, Room> _rooms = new();
     private static readonly Random _random = new();
+    private readonly ILogger<RoomService> _logger;
+
+    public RoomService(ILogger<RoomService> logger)
+    {
+        _logger = logger;
+    }
+
+    // Parameterless constructor for tests
+    public RoomService() : this(Microsoft.Extensions.Logging.Abstractions.NullLogger<RoomService>.Instance) { }
 
     public Room CreateRoom(string? ownerName, ScaleType scale, string cardsText, string ownerConnectionId, int? sessionMinutes = null, bool coffeeBreak = false, bool shuffle = false)
     {
@@ -146,6 +156,8 @@ public class RoomService
             if (currentOwner != null)
             {
                 currentOwner.IsOwner = false;
+                _logger.LogInformation("Original owner \"{OwnerName}\" reclaimed ownership in {RoomCode} from \"{TempOwner}\"",
+                    player.Name, room.Code, currentOwner.Name);
             }
             player.IsOwner = true;
             room.OwnerConnectionId = newConnectionId;
@@ -171,6 +183,13 @@ public class RoomService
                         player.IsOwner = false;
                         newOwner.IsOwner = true;
                         room.OwnerConnectionId = newOwner.ConnectionId;
+                        _logger.LogWarning("Ownership transferred in {RoomCode}: \"{OldOwner}\" -> \"{NewOwner}\"",
+                            room.Code, player.Name, newOwner.Name);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Owner \"{OwnerName}\" disconnected from {RoomCode}, no eligible player for transfer",
+                            player.Name, room.Code);
                     }
                 }
             }
@@ -196,11 +215,13 @@ public class RoomService
                 foreach (var card in room.Cards)
                     card.Votes.TryRemove(player.ConnectionId, out _);
                 room.Players.TryRemove(player.ConnectionId, out _);
+                _logger.LogInformation("Cleaned up expired player \"{PlayerName}\" from {RoomCode}", player.Name, room.Code);
             }
 
             if (room.Players.Count == 0)
             {
                 _rooms.TryRemove(room.Code, out _);
+                _logger.LogInformation("Removed empty room {RoomCode}", room.Code);
             }
         }
         return null;
