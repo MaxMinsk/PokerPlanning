@@ -220,7 +220,21 @@ function onRoomState(data) {
 
 function onPlayerJoined(data) {
     state.players = [...state.players.filter(p => p.name !== data.name), data];
+
+    // If the joining player is the owner, remove ownership from others (including us)
+    if (data.isOwner) {
+        state.players = state.players.map(p => ({
+            ...p,
+            isOwner: p.name === data.name
+        }));
+        if (state.myName !== data.name && state.isOwner) {
+            state.isOwner = false;
+        }
+    }
+
     renderPlayers();
+    renderOwnerControls();
+    document.getElementById('btnExport').style.display = state.isOwner ? '' : 'none';
     showToast(`${data.name} joined`);
 }
 

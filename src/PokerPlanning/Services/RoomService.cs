@@ -55,6 +55,7 @@ public class RoomService
             ConnectionId = ownerConnectionId,
             Name = isSpectator ? "Spectator" : ownerName!.Trim(),
             IsOwner = true,
+            WasOriginalOwner = true,
             IsSpectator = isSpectator
         };
 
@@ -119,7 +120,7 @@ public class RoomService
         var oldConnectionId = player.ConnectionId;
 
         // Remove old key, update connection, re-add with new key
-        room.Players.Remove(oldConnectionId);
+        room.Players.TryRemove(oldConnectionId, out _);
         player.ConnectionId = newConnectionId;
         player.DisconnectedAt = null;
         room.Players[newConnectionId] = player;
@@ -127,15 +128,26 @@ public class RoomService
         // Migrate votes from old connectionId to new
         foreach (var card in room.Cards)
         {
-            if (card.Votes.Remove(oldConnectionId, out var vote))
+            if (card.Votes.TryRemove(oldConnectionId, out var vote))
             {
                 card.Votes[newConnectionId] = vote;
             }
         }
 
-        // Restore ownership if this was the owner
+        // Restore ownership if this was the original owner
         if (room.OwnerConnectionId == oldConnectionId)
         {
+            room.OwnerConnectionId = newConnectionId;
+        }
+        else if (player.WasOriginalOwner)
+        {
+            // Original owner reconnected — take back ownership
+            var currentOwner = room.Players.Values.FirstOrDefault(p => p.IsOwner && p.ConnectionId != newConnectionId);
+            if (currentOwner != null)
+            {
+                currentOwner.IsOwner = false;
+            }
+            player.IsOwner = true;
             room.OwnerConnectionId = newConnectionId;
         }
 
@@ -180,7 +192,10 @@ public class RoomService
 
             foreach (var player in expired)
             {
-                room.Players.Remove(player.ConnectionId);
+                // Remove orphaned votes from all cards
+                foreach (var card in room.Cards)
+                    card.Votes.TryRemove(player.ConnectionId, out _);
+                room.Players.TryRemove(player.ConnectionId, out _);
             }
 
             if (room.Players.Count == 0)
@@ -349,16 +364,28 @@ public class RoomService
 
         return room.Cards
             .OrderBy(c => c.OriginalIndex)
-            .Select((card, index) => (object)new
+            .Select((card, index) =>
             {
-                index = card.OriginalIndex + 1,
-                subject = card.Subject,
-                description = card.Description,
-                estimate = card.AcceptedEstimate,
-                votes = card.Votes.ToDictionary(
-                    v => room.Players.TryGetValue(v.Key, out var p) ? p.Name : "Unknown",
-                    v => v.Value
-                )
+                var votes = new Dictionary<string, string>();
+                foreach (var (connId, vote) in card.Votes)
+                {
+                    var name = room.Players.TryGetValue(connId, out var p) ? p.Name : null;
+                    if (name == null) continue; // skip orphaned votes from cleaned-up players
+                    // Handle duplicate names by appending suffix
+                    var key = name;
+                    var suffix = 2;
+                    while (votes.ContainsKey(key)) key = $"{name} ({suffix++})";
+                    votes[key] = vote;
+                }
+
+                return (object)new
+                {
+                    index = card.OriginalIndex + 1,
+                    subject = card.Subject,
+                    description = card.Description,
+                    estimate = card.AcceptedEstimate,
+                    votes
+                };
             }).ToList();
     }
 

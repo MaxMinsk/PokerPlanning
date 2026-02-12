@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace PokerPlanning.Models;
 
 public class Room
@@ -7,7 +9,7 @@ public class Room
     public ScaleType Scale { get; set; } = ScaleType.Fibonacci;
     public List<Card> Cards { get; set; } = [];
     public int CurrentCardIndex { get; set; }
-    public Dictionary<string, Player> Players { get; set; } = new();
+    public ConcurrentDictionary<string, Player> Players { get; set; } = new();
     public RoomState State { get; set; } = RoomState.Voting;
 
     // Coffee break voting

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace PokerPlanning.Models;
 
 public class Card
@@ -6,5 +8,5 @@ public class Card
     public string? Description { get; set; }
     public string? AcceptedEstimate { get; set; }
     public int OriginalIndex { get; set; }
-    public Dictionary<string, string> Votes { get; set; } = new();
+    public ConcurrentDictionary<string, string> Votes { get; set; } = new();
 }

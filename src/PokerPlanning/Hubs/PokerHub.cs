@@ -327,6 +327,7 @@ public class PokerHub : Hub
         {
             var player = room.Players.GetValueOrDefault(Context.ConnectionId);
             var playerName = player?.Name ?? "Unknown";
+            var wasOwner = player?.IsOwner == true;
 
             // Mark as disconnected (grace period) instead of removing immediately
             _roomService.DisconnectPlayer(Context.ConnectionId);
@@ -334,12 +335,18 @@ public class PokerHub : Hub
             var activePlayers = _roomService.GetActivePlayers(room);
             if (activePlayers.Any())
             {
-                var newOwner = room.GetOwner();
+                // Only send newOwnerName if ownership actually changed
+                string? newOwnerName = null;
+                if (wasOwner)
+                {
+                    newOwnerName = room.GetOwner()?.Name;
+                }
+
                 await Clients.Group(room.Code).SendAsync("PlayerLeft", new
                 {
                     playerName,
                     playerCount = activePlayers.Count(),
-                    newOwnerName = newOwner?.Name
+                    newOwnerName
                 });
             }
         }

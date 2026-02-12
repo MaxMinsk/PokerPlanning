@@ -1,6 +1,6 @@
 name: "Planning Poker"
 description: "Collaborative estimation tool — Planning Poker with real-time SignalR"
-version: "1.5.0"
+version: "1.5.1"
 slug: "planning-poker"
 arch:
   - amd64
