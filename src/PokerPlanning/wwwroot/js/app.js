@@ -107,11 +107,12 @@ document.getElementById('btnContinue').addEventListener('click', async () => {
     const sessionVal = document.getElementById('sessionTime').value;
     const sessionMinutes = sessionVal ? parseInt(sessionVal) : null;
     const coffeeBreak = document.getElementById('coffeeBreak').checked;
+    const shuffle = document.getElementById('shuffleQuestions').checked;
 
     if (!cardsText) return showToast("Enter at least one question", true);
 
     await ensureConnected();
-    connection.invoke("CreateRoom", ownerName || null, scaleType, cardsText, sessionMinutes, coffeeBreak);
+    connection.invoke("CreateRoom", ownerName || null, scaleType, cardsText, sessionMinutes, coffeeBreak, shuffle);
 });
 
 document.getElementById('btnJoinRoom').addEventListener('click', async () => {

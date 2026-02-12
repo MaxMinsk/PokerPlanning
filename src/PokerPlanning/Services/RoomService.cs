@@ -8,13 +8,27 @@ public class RoomService
     private readonly ConcurrentDictionary<string, Room> _rooms = new();
     private static readonly Random _random = new();
 
-    public Room CreateRoom(string? ownerName, ScaleType scale, string cardsText, string ownerConnectionId, int? sessionMinutes = null, bool coffeeBreak = false)
+    public Room CreateRoom(string? ownerName, ScaleType scale, string cardsText, string ownerConnectionId, int? sessionMinutes = null, bool coffeeBreak = false, bool shuffle = false)
     {
         var code = GenerateCode();
         var cards = ParseCards(cardsText);
 
         if (cards.Count == 0)
             throw new ArgumentException("At least one card/question is required.");
+
+        // Assign original indices before potential shuffle
+        for (int i = 0; i < cards.Count; i++)
+            cards[i].OriginalIndex = i;
+
+        if (shuffle)
+        {
+            // Fisher-Yates shuffle
+            for (int i = cards.Count - 1; i > 0; i--)
+            {
+                int j = _random.Next(i + 1);
+                (cards[i], cards[j]) = (cards[j], cards[i]);
+            }
+        }
 
         var room = new Room
         {
@@ -333,17 +347,19 @@ public class RoomService
     {
         var room = GetRoom(code) ?? throw new ArgumentException("Room not found.");
 
-        return room.Cards.Select((card, index) => (object)new
-        {
-            index = index + 1,
-            subject = card.Subject,
-            description = card.Description,
-            estimate = card.AcceptedEstimate,
-            votes = card.Votes.ToDictionary(
-                v => room.Players.TryGetValue(v.Key, out var p) ? p.Name : "Unknown",
-                v => v.Value
-            )
-        }).ToList();
+        return room.Cards
+            .OrderBy(c => c.OriginalIndex)
+            .Select((card, index) => (object)new
+            {
+                index = card.OriginalIndex + 1,
+                subject = card.Subject,
+                description = card.Description,
+                estimate = card.AcceptedEstimate,
+                votes = card.Votes.ToDictionary(
+                    v => room.Players.TryGetValue(v.Key, out var p) ? p.Name : "Unknown",
+                    v => v.Value
+                )
+            }).ToList();
     }
 
     private static List<Card> ParseCards(string text)

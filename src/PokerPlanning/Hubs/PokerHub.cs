@@ -13,12 +13,12 @@ public class PokerHub : Hub
         _roomService = roomService;
     }
 
-    public async Task CreateRoom(string? ownerName, int scaleType, string cardsText, int? sessionMinutes = null, bool coffeeBreak = false)
+    public async Task CreateRoom(string? ownerName, int scaleType, string cardsText, int? sessionMinutes = null, bool coffeeBreak = false, bool shuffle = false)
     {
         try
         {
             var scale = (ScaleType)scaleType;
-            var room = _roomService.CreateRoom(ownerName, scale, cardsText, Context.ConnectionId, sessionMinutes, coffeeBreak);
+            var room = _roomService.CreateRoom(ownerName, scale, cardsText, Context.ConnectionId, sessionMinutes, coffeeBreak, shuffle);
 
             await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
             var creatorPlayer = room.Players[Context.ConnectionId];
